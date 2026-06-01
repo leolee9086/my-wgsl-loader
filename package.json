@@ -1,0 +1,60 @@
+{
+  "name": "wgsl-module-loader",
+  "version": "0.1.0",
+  "description": "A preprocessor and module loader for WGSL, supporting @import, @define, and conditional compilation.",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    },
+    "./parser": {
+      "import": "./src/parser.ts",
+      "types": "./src/parser.ts"
+    }
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "build": "rollup -c",
+    "test": "jest"
+  },
+  "keywords": [
+    "wgsl",
+    "webgpu",
+    "shader",
+    "preprocessor",
+    "loader",
+    "import",
+    "module"
+  ],
+  "author": "leolee9086",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/leolee9086/my-wgsl-loader.git"
+  },
+  "bugs": {
+    "url": "https://github.com/leolee9086/my-wgsl-loader/issues"
+  },
+  "homepage": "https://github.com/leolee9086/my-wgsl-loader#readme",
+  "devDependencies": {
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-typescript": "^11.1.6",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^20.14.2",
+    "@types/node-fetch": "^2.6.11",
+    "jest": "^30.0.3",
+    "rollup": "^4.18.0",
+    "ts-jest": "^29.4.0",
+    "tslib": "^2.6.3",
+    "typescript": "^5.5.2"
+  },
+  "dependencies": {
+    "magic-string": "^0.30.10",
+    "node-fetch": "^3.3.2"
+  }
+}
