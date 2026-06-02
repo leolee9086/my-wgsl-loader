@@ -202,6 +202,151 @@ export interface EntryPointInfo {
     stage: "vertex" | "fragment" | "compute";
 }
 
+export interface LocationInfo {
+    location: number;
+    type: string;
+}
+
+export interface OverrideInfo {
+    name: string;
+    type: string;
+    id?: number;
+    hasDefault: boolean;
+}
+
+export interface BindingInfo {
+    group: number;
+    binding: number;
+    varName: string;
+    resourceType: string; // "uniform", "storage", "read-only-storage", "sampler", "texture", "storage_texture", "external_texture"
+    format?: string;
+    access?: string;
+    viewDimension?: string;
+    sampleType?: string;
+}
+
+/** Extract @location(N) type mappings from a WGSL struct or function parameter list. */
+export function parseLocations(wgsl: string, sourceSlice?: string): LocationInfo[] {
+    const source = sourceSlice ?? wgsl;
+    const locations: LocationInfo[] = [];
+    const locRegex = /@location\((\d+)\)\s+\w+\s*:\s*([^,{]+)/g;
+    let match;
+    while ((match = locRegex.exec(source)) !== null) {
+        locations.push({ location: parseInt(match[1]), type: match[2].trim() });
+    }
+    return locations;
+}
+
+/**
+ * Parse override declarations from WGSL source.
+ * Matches patterns like:
+ *   override x: f32 = 1.0;
+ *   override y: f32;
+ *   @id(1) override z: f32;
+ */
+export function parseOverrides(wgsl: string): OverrideInfo[] {
+    const overrides: OverrideInfo[] = [];
+    const overrideRegex = /(?:@id\((\d+)\)\s+)?override\s+(\w+)\s*:\s*(\w+)(?:\s*=\s*([^;]+))?;/g;
+    let match;
+    while ((match = overrideRegex.exec(wgsl)) !== null) {
+        overrides.push({
+            id: match[1] ? parseInt(match[1]) : undefined,
+            name: match[2],
+            type: match[3],
+            hasDefault: match[4] !== undefined,
+        });
+    }
+    return overrides;
+}
+
+/**
+ * Parse all binding declarations from WGSL source.
+ * Matches: @group(N) @binding(M) var<type> name: <resource_type>;
+ * Where resource_type can be:
+ *   - buffer types: BufferType, array<f32>, etc. (for var<uniform>, var<storage>)
+ *   - sampler: sampler, sampler_comparison
+ *   - texture: texture_1d/2d/3d/cube<format, access>
+ *   - storage_texture: texture_storage_1d/2d/3d<format, access>
+ *   - external_texture: texture_external
+ */
+export function parseBindings(wgsl: string): BindingInfo[] {
+    const bindings: BindingInfo[] = [];
+    const bindingRegex = /@group\((\d+)\)\s+@binding\((\d+)\)\s+var\s*(?:<(\w+)>)?\s*(\w+)\s*:\s*([^;]+);/g;
+    let match;
+    while ((match = bindingRegex.exec(wgsl)) !== null) {
+        const group = parseInt(match[1]);
+        const binding = parseInt(match[2]);
+        const addressSpace = match[3] ?? ""; // uniform, storage, read_write, etc.
+        const varName = match[4];
+        const typeDecl = match[5].trim();
+
+        let resourceType = "unknown";
+        let format: string | undefined;
+        let access: string | undefined;
+        let viewDimension: string | undefined;
+        let sampleType: string | undefined;
+
+        if (typeDecl.startsWith("texture_storage_")) {
+            resourceType = "storage_texture";
+            // texture_storage_1d<rgba8unorm, write>
+            const storageMatch = typeDecl.match(/texture_storage_(\w+)<(\w+),\s*(\w+)>/);
+            if (storageMatch) {
+                viewDimension = storageMatch[1];
+                format = storageMatch[2];
+                access = storageMatch[3];
+            }
+        } else if (typeDecl.startsWith("texture_external")) {
+            resourceType = "external_texture";
+        } else if (typeDecl.startsWith("texture_depth") || typeDecl.startsWith("texture_multisampled")) {
+            resourceType = "texture";
+            // texture_depth_2d, texture_depth_2d_array, texture_multisampled_2d
+            const texMatch = typeDecl.match(/texture_(?:depth|multisampled)_(\w+)(?:\s*<\s*([^>]+)\s*>)?/);
+            if (texMatch) {
+                viewDimension = texMatch[1];
+                sampleType = "depth";
+            }
+        } else if (typeDecl.startsWith("texture_")) {
+            resourceType = "texture";
+            // texture_1d<f32>, texture_2d<rgba8unorm>, etc.
+            const texMatch = typeDecl.match(/texture_(\w+)<([^>]+)>/);
+            if (texMatch) {
+                viewDimension = texMatch[1];
+                sampleType = texMatch[2];
+            }
+        } else if (typeDecl === "sampler") {
+            resourceType = "sampler";
+        } else if (typeDecl === "sampler_comparison") {
+            resourceType = "sampler";
+        } else {
+            // Buffer type
+            resourceType = addressSpace === "uniform" ? "uniform" :
+                          addressSpace === "storage" ? "storage" :
+                          addressSpace === "read_write" ? "storage" :
+                          addressSpace === "function" ? "uniform" :
+                          "uniform";
+        }
+
+        bindings.push({
+            group, binding, varName, resourceType,
+            format, access, viewDimension, sampleType,
+        });
+    }
+    return bindings;
+}
+
+/**
+ * Extract storage texture format+access info (specific helper for CTS storage_texture tests).
+ */
+export function parseStorageTextureInfo(wgsl: string): Array<{ format: string; access: string; dimension: string }> {
+    const result: Array<{ format: string; access: string; dimension: string }> = [];
+    const storageRegex = /texture_storage_(\w+)<(\w+),\s*(\w+)>/g;
+    let match;
+    while ((match = storageRegex.exec(wgsl)) !== null) {
+        result.push({ dimension: match[1], format: match[2], access: match[3] });
+    }
+    return result;
+}
+
 /**
  * Parse entry points from WGSL source code.
  * Uses a stateful O(n) scanner that correctly handles comments,
@@ -326,4 +471,8 @@ export const utils = {
     parseImportList,
     parseEntryPoints,
     detectImmediateSize,
+    parseLocations,
+    parseOverrides,
+    parseBindings,
+    parseStorageTextureInfo,
 }; 
